@@ -1,10 +1,14 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Play } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
+
+// Video poster image - cinematic frame from the MSC footage
+const VIDEO_POSTER = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo78-jfpuDJgxyeQ2YTcXCbJ1AZG7dKQWzo.png'
+const VIDEO_URL = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/0525%281%29-9Qu71geXiEU5fynbgHJFRlQ1zPCi8p.mp4'
 
 // Refined intro animation component
 function IntroAnimation({ onComplete }: { onComplete: () => void }) {
@@ -98,11 +102,64 @@ function IntroAnimation({ onComplete }: { onComplete: () => void }) {
   )
 }
 
+// Animated gradient overlay component for loading state
+function LoadingGradient({ isVisible }: { isVisible: boolean }) {
+  return (
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          initial={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 1.2, ease: 'easeOut' }}
+          className="absolute inset-0 z-[1]"
+        >
+          {/* Animated gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[#0a1a0f] via-[#030303] to-[#0a0f1a]" />
+          
+          {/* Animated shimmer effect */}
+          <motion.div
+            animate={{
+              backgroundPosition: ['200% 0%', '-200% 0%'],
+            }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              ease: 'linear',
+            }}
+            className="absolute inset-0 opacity-30"
+            style={{
+              background: 'linear-gradient(90deg, transparent 0%, rgba(43, 168, 74, 0.1) 50%, transparent 100%)',
+              backgroundSize: '200% 100%',
+            }}
+          />
+          
+          {/* Subtle pulsing glow */}
+          <motion.div
+            animate={{
+              opacity: [0.1, 0.2, 0.1],
+              scale: [1, 1.1, 1],
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[#2BA84A]/20 blur-[120px]"
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 export default function HeroSection() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [showIntro, setShowIntro] = useState(true)
   const [videoError, setVideoError] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const [videoLoaded, setVideoLoaded] = useState(false)
+  const [videoPlaying, setVideoPlaying] = useState(false)
+  
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ['start start', 'end start']
@@ -112,12 +169,48 @@ export default function HeroSection() {
   const y = useTransform(scrollYProgress, [0, 0.4], [0, -60])
   const scale = useTransform(scrollYProgress, [0, 0.4], [1, 0.95])
 
-  // Slow down video playback
-  useEffect(() => {
+  // Handle video loading and playback
+  const handleVideoCanPlay = useCallback(() => {
+    setVideoLoaded(true)
     if (videoRef.current) {
       videoRef.current.playbackRate = 0.7
+      // Attempt to play
+      videoRef.current.play().then(() => {
+        setVideoPlaying(true)
+      }).catch(() => {
+        // Autoplay might be blocked, video is still loaded
+        setVideoPlaying(true)
+      })
     }
-  }, [videoError])
+  }, [])
+
+  const handleVideoPlaying = useCallback(() => {
+    setVideoPlaying(true)
+  }, [])
+
+  // Preload video on mount for faster loading
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Create a link preload for the video
+      const link = document.createElement('link')
+      link.rel = 'preload'
+      link.as = 'video'
+      link.href = VIDEO_URL
+      link.type = 'video/mp4'
+      document.head.appendChild(link)
+      
+      return () => {
+        document.head.removeChild(link)
+      }
+    }
+  }, [])
+
+  // Set playback rate when video is available
+  useEffect(() => {
+    if (videoRef.current && videoLoaded) {
+      videoRef.current.playbackRate = 0.7
+    }
+  }, [videoLoaded])
 
   return (
     <>
@@ -134,41 +227,68 @@ export default function HeroSection() {
       >
         {/* Sticky container */}
         <div className="sticky top-0 h-screen overflow-hidden">
-          {/* Background video */}
+          {/* Background video container - fixed dimensions to prevent layout shift */}
           <div className="absolute inset-0">
+            {/* Animated loading gradient - shows until video is playing */}
+            <LoadingGradient isVisible={!videoPlaying && !videoError} />
+            
+            {/* Static poster/fallback background - always present underneath */}
+            <div 
+              className="absolute inset-0 bg-gradient-to-br from-[#0a1a0f] via-[#030303] to-[#0a0f1a]"
+              style={{ zIndex: 0 }}
+            />
+            
+            {/* Video element with smooth fade-in */}
             {!videoError && (
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                loop
-                playsInline
-                onError={() => setVideoError(true)}
-                onLoadedMetadata={(e) => {
-                  const video = e.currentTarget
-                  video.playbackRate = 0.7
-                }}
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{ filter: 'brightness(1.05)' }}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: videoPlaying ? 1 : 0 }}
+                transition={{ duration: 1.2, ease: 'easeOut' }}
+                className="absolute inset-0"
+                style={{ zIndex: 1 }}
               >
-                <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/0525%281%29-9Qu71geXiEU5fynbgHJFRlQ1zPCi8p.mp4" type="video/mp4" />
-              </video>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  poster={VIDEO_POSTER}
+                  onCanPlay={handleVideoCanPlay}
+                  onPlaying={handleVideoPlaying}
+                  onError={() => setVideoError(true)}
+                  onLoadedMetadata={(e) => {
+                    const video = e.currentTarget
+                    video.playbackRate = 0.7
+                  }}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ 
+                    filter: 'brightness(1.05)',
+                    willChange: 'opacity',
+                  }}
+                >
+                  <source src={VIDEO_URL} type="video/mp4" />
+                </video>
+              </motion.div>
             )}
+            
             {/* Fallback background when video fails */}
             {videoError && (
-              <div className="absolute inset-0 bg-gradient-to-br from-[#0a1a0f] via-[#030303] to-[#0a0f1a]" />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#0a1a0f] via-[#030303] to-[#0a0f1a]" style={{ zIndex: 1 }} />
             )}
-            {/* Gradient overlays for better text readability */}
-            <div className="absolute inset-0 bg-gradient-to-b from-[#030303]/70 via-[#030303]/50 to-[#030303]" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#030303]/40 via-transparent to-[#030303]/40" />
+            
+            {/* Gradient overlays for better text readability - always on top */}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#030303]/70 via-[#030303]/50 to-[#030303]" style={{ zIndex: 2 }} />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#030303]/40 via-transparent to-[#030303]/40" style={{ zIndex: 2 }} />
           </div>
           
           {/* Subtle ambient glow */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 3 }}>
             <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[#2BA84A]/5 rounded-full blur-[100px]" />
           </div>
 
-          {/* Content */}
+          {/* Content - always visible immediately */}
           <motion.div 
             className="relative z-20 h-full flex flex-col items-center justify-center px-4 sm:px-6"
             style={{ opacity, y, scale }}
